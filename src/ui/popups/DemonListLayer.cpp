@@ -21,11 +21,11 @@ bool DemonListLayer::init(float width, float height) {
     scrollBG->setPosition({ winSize.width / 2.f, winSize.height / 2.f + 5.f });
     m_mainLayer->addChild(scrollBG);
 
-    m_listSize = { listWidth - 10.f, listHeight - 10.f };
-    m_listPos = {
+    m_listSize = cocos2d::CCSize(listWidth - 10.f, listHeight - 10.f);
+    m_listPos = cocos2d::CCPoint(
         winSize.width / 2.f - m_listSize.width / 2.f,
         winSize.height / 2.f + 5.f - m_listSize.height / 2.f
-    };
+    );
 
     m_statusLabel = CCLabelBMFont::create("Loading...", "bigFont.fnt");
     m_statusLabel->setScale(0.5f);
