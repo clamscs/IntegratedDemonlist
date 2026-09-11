@@ -4,7 +4,9 @@
 using namespace geode::prelude;
 using namespace pointercrate;
 
-bool DemonListLayer::setup() {
+bool DemonListLayer::init(float width, float height) {
+    if (!Popup::init(width, height)) return false;
+
     this->setTitle("Pointercrate Demon List");
     m_noElasticity = true;
 
@@ -54,10 +56,6 @@ bool DemonListLayer::setup() {
     navMenu->setPosition({ winSize.width / 2.f, 25.f });
     m_mainLayer->addChild(navMenu);
 
-    m_listener.bind([this](web::WebTask::Event* event) {
-        onFetchFinished(event);
-    });
-
     fetch(demonsListedUrl());
 
     return true;
@@ -70,20 +68,19 @@ void DemonListLayer::fetch(std::string const& url) {
 
     auto req = web::WebRequest();
     req.userAgent("IntegratedPointercrate (Geode Mod)");
-    m_listener.setFilter(req.get(url));
+    m_listener.spawn(req.get(url), [this](web::WebResponse res) {
+        onFetchFinished(res);
+    });
 }
 
-void DemonListLayer::onFetchFinished(web::WebTask::Event* event) {
-    auto res = event->getValue();
-    if (!res) return;
-
-    if (!res->ok()) {
-        m_statusLabel->setString(fmt::format("Failed to load (HTTP {})", res->code()).c_str());
+void DemonListLayer::onFetchFinished(web::WebResponse res) {
+    if (!res.ok()) {
+        m_statusLabel->setString(fmt::format("Failed to load (HTTP {})", res.code()).c_str());
         return;
     }
 
-    auto jsonResult = res->json();
-    if (!jsonResult) {
+    auto jsonResult = res.json();
+    if (jsonResult.isErr()) {
         m_statusLabel->setString("Failed to parse response");
         return;
     }
@@ -96,7 +93,11 @@ void DemonListLayer::onFetchFinished(web::WebTask::Event* event) {
         }
     }
 
-    m_links = PageLinks::fromHeader(res->header("Link"));
+    std::optional<std::string> linkHeader;
+    if (auto header = res.header("Link")) {
+        linkHeader = std::string(*header);
+    }
+    m_links = PageLinks::fromHeader(linkHeader);
     m_prevBtn->setEnabled(m_links.prev.has_value());
     m_prevBtn->setOpacity(m_links.prev.has_value() ? 255 : 100);
     m_nextBtn->setEnabled(m_links.next.has_value());
@@ -154,7 +155,7 @@ void DemonListLayer::onReload(CCObject*) {
 
 DemonListLayer* DemonListLayer::create() {
     auto ret = new DemonListLayer();
-    if (ret->initAnchored(360.f, 260.f)) {
+    if (ret->init(360.f, 260.f)) {
         ret->autorelease();
         return ret;
     }

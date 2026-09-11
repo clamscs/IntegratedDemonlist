@@ -74,7 +74,7 @@ void DemonCell::onName(CCObject*) {
     }
 
     GameLevelManager::sharedState()->m_levelDownloadDelegate = this;
-    GameLevelManager::sharedState()->downloadLevel(m_demon.levelId, false);
+    GameLevelManager::sharedState()->downloadLevel(m_demon.levelId, false, 0);
 }
 
 void DemonCell::levelDownloadFinished(GJGameLevel* level) {
@@ -112,3 +112,4 @@ DemonCell* DemonCell::create(pointercrate::Demon const& demon, float width) {
     delete ret;
     return nullptr;
 }
+

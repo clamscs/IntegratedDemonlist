@@ -12,7 +12,9 @@ static bool sameNameIgnoreCase(std::string const& a, std::string const& b) {
     return true;
 }
 
-bool PlayerRankingLayer::setup() {
+bool PlayerRankingLayer::init(float width, float height) {
+    if (!Popup::init(width, height)) return false;
+
     this->setTitle("Pointercrate Player Ranking");
 
     auto winSize = m_mainLayer->getContentSize();
@@ -85,13 +87,6 @@ bool PlayerRankingLayer::setup() {
     navMenu->setPosition({ winSize.width / 2.f, 25.f });
     m_mainLayer->addChild(navMenu);
 
-    m_listListener.bind([this](web::WebTask::Event* event) {
-        onListFetchFinished(event);
-    });
-    m_ownListener.bind([this](web::WebTask::Event* event) {
-        onOwnFetchFinished(event);
-    });
-
     fetchList(playersRankingUrl());
 
     return true;
@@ -104,20 +99,19 @@ void PlayerRankingLayer::fetchList(std::string const& url) {
 
     auto req = web::WebRequest();
     req.userAgent("IntegratedPointercrate (Geode Mod)");
-    m_listListener.setFilter(req.get(url));
+    m_listListener.spawn(req.get(url), [this](web::WebResponse res) {
+        onListFetchFinished(res);
+    });
 }
 
-void PlayerRankingLayer::onListFetchFinished(web::WebTask::Event* event) {
-    auto res = event->getValue();
-    if (!res) return;
-
-    if (!res->ok()) {
-        m_statusLabel->setString(fmt::format("Failed to load (HTTP {})", res->code()).c_str());
+void PlayerRankingLayer::onListFetchFinished(web::WebResponse res) {
+    if (!res.ok()) {
+        m_statusLabel->setString(fmt::format("Failed to load (HTTP {})", res.code()).c_str());
         return;
     }
 
-    auto jsonResult = res->json();
-    if (!jsonResult) {
+    auto jsonResult = res.json();
+    if (jsonResult.isErr()) {
         m_statusLabel->setString("Failed to parse response");
         return;
     }
@@ -130,7 +124,11 @@ void PlayerRankingLayer::onListFetchFinished(web::WebTask::Event* event) {
         }
     }
 
-    m_links = PageLinks::fromHeader(res->header("Link"));
+    std::optional<std::string> linkHeader;
+    if (auto header = res.header("Link")) {
+        linkHeader = std::string(*header);
+    }
+    m_links = PageLinks::fromHeader(linkHeader);
     m_prevBtn->setEnabled(m_links.prev.has_value());
     m_prevBtn->setOpacity(m_links.prev.has_value() ? 255 : 100);
     m_nextBtn->setEnabled(m_links.next.has_value());
@@ -181,25 +179,30 @@ void PlayerRankingLayer::fetchOwnRank(std::string const& name) {
 
     auto req = web::WebRequest();
     req.userAgent("IntegratedPointercrate (Geode Mod)");
-    m_ownListener.setFilter(req.get(playerByNameUrl(name)));
+    m_ownListener.spawn(req.get(playerByNameUrl(name)), [this](web::WebResponse res) {
+        onOwnFetchFinished(res);
+    });
 }
 
-void PlayerRankingLayer::onOwnFetchFinished(web::WebTask::Event* event) {
-    auto res = event->getValue();
-    if (!res) return;
-
-    if (!res->ok()) {
+void PlayerRankingLayer::onOwnFetchFinished(web::WebResponse res) {
+    if (!res.ok()) {
         m_ownRankLabel->setString("Could not find that player");
         return;
     }
 
-    auto jsonResult = res->json();
-    if (!jsonResult || !jsonResult.unwrap().isArray() || jsonResult.unwrap().size() == 0) {
+    auto jsonResult = res.json();
+    if (jsonResult.isErr()) {
         m_ownRankLabel->setString("Could not find that player");
         return;
     }
 
-    auto player = RankedPlayer::fromJson(jsonResult.unwrap()[0]);
+    auto json = jsonResult.unwrap();
+    if (!json.isArray() || json.size() == 0) {
+        m_ownRankLabel->setString("Could not find that player");
+        return;
+    }
+
+    auto player = RankedPlayer::fromJson(json[0]);
     m_ownRankLabel->setString(fmt::format(
         "Your rank: #{}  |  Score: {:.2f}", player.rank, player.score
     ).c_str());
@@ -224,7 +227,7 @@ void PlayerRankingLayer::onSearchOwn(CCObject*) {
 
 PlayerRankingLayer* PlayerRankingLayer::create() {
     auto ret = new PlayerRankingLayer();
-    if (ret->initAnchored(400.f, 280.f)) {
+    if (ret->init(400.f, 280.f)) {
         ret->autorelease();
         return ret;
     }
