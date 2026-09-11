@@ -9,7 +9,7 @@
 namespace pointercrate {
 
 constexpr const char* BASE_URL = "https://pointercrate.com/api";
-constexpr int PAGE_SIZE = 10;
+constexpr int ITEMS_PER_PAGE = 10;
 
 struct SimplePlayer {
     int id = 0;

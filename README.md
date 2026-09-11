@@ -42,7 +42,7 @@ Includes are resolved from `src/` (see `target_include_directories` in `CMakeLis
 
 ## Pagination
 
-Both lists fetch 10 items per page (`pointercrate::PAGE_SIZE` in `PointercrateAPI.hpp`) and page strictly through Pointercrate's `Link` response header (`rel="next"` / `rel="prev"`), the same cursor pagination Pointercrate itself uses. Pressing Next repeatedly walks forward page by page until the API stops returning a `next` link (list exhausted), at which point the Next button disables itself instead of looping or re-fetching everything at once.
+Both lists fetch 10 items per page (`pointercrate::ITEMS_PER_PAGE` in `PointercrateAPI.hpp`) and page strictly through Pointercrate's `Link` response header (`rel="next"` / `rel="prev"`), the same cursor pagination Pointercrate itself uses. Pressing Next repeatedly walks forward page by page until the API stops returning a `next` link (list exhausted), at which point the Next button disables itself instead of looping or re-fetching everything at once.
 
 ## No settings
 

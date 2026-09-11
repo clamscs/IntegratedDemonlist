@@ -73,15 +73,30 @@ PageLinks PageLinks::fromHeader(std::optional<std::string> const& header) {
 }
 
 std::string demonsListedUrl() {
-    return fmt::format("{}/v2/demons/listed?limit={}", BASE_URL, PAGE_SIZE);
+    return fmt::format("{}/v2/demons/listed?limit={}", BASE_URL, ITEMS_PER_PAGE);
 }
 
 std::string playersRankingUrl() {
-    return fmt::format("{}/v1/players/ranking/?limit={}", BASE_URL, PAGE_SIZE);
+    return fmt::format("{}/v1/players/ranking/?limit={}", BASE_URL, ITEMS_PER_PAGE);
+}
+
+static std::string urlEncode(std::string const& s) {
+    std::string out;
+    const char hex[] = "0123456789ABCDEF";
+    for (unsigned char c : s) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += c;
+        } else {
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 0xF];
+        }
+    }
+    return out;
 }
 
 std::string playerByNameUrl(std::string const& name) {
-    return fmt::format("{}/v1/players/ranking/?name_contains={}&limit=1", BASE_URL, web::urlEncode(name));
+    return fmt::format("{}/v1/players/ranking/?name_contains={}&limit=1", BASE_URL, urlEncode(name));
 }
 
 }
