@@ -14,8 +14,8 @@ protected:
     cocos2d::extension::CCScrollView* m_scrollView = nullptr;
     cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
     cocos2d::CCLabelBMFont* m_ownRankLabel = nullptr;
-    cocos2d::CCMenuItemSpriteExtra* m_nextBtn = nullptr;
-    cocos2d::CCMenuItemSpriteExtra* m_prevBtn = nullptr;
+    CCMenuItemSpriteExtra* m_nextBtn = nullptr;
+    CCMenuItemSpriteExtra* m_prevBtn = nullptr;
     geode::TextInput* m_searchInput = nullptr;
     pointercrate::PageLinks m_links;
     cocos2d::CCSize m_listSize;
