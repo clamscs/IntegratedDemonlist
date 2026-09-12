@@ -1,22 +1,45 @@
 #include "../IntegratedPointercrate.hpp"
 #include <Geode/modify/LeaderboardsLayer.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
-#include <Geode/binding/GJListLayer.hpp>
-#include <Geode/binding/GameManager.hpp>
 #include <Geode/binding/FLAlertLayer.hpp>
+#include <Geode/binding/GameLevelManager.hpp>
+#include <Geode/binding/GameManager.hpp>
+#include <Geode/binding/GJListLayer.hpp>
+#include <Geode/binding/GJUserScore.hpp>
 #include <Geode/binding/LoadingCircle.hpp>
+#include <Geode/binding/SimplePlayer.hpp>
+#include <Geode/binding/UserInfoDelegate.hpp>
 #include <Geode/ui/ListView.hpp>
+#include <Geode/utils/cocos.hpp>
 #include <Geode/utils/string.hpp>
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace geode::prelude;
 
+namespace {
+    geode::Function<void(GJUserScore*)> s_onUserInfoFinished;
+    geode::CopyableFunction<void(int)> s_onUserInfoFailed;
+
+    class GlobalUserInfoDelegate : public UserInfoDelegate {
+    public:
+        void getUserInfoFinished(GJUserScore* score) override {
+            if (s_onUserInfoFinished) s_onUserInfoFinished(score);
+        }
+        void getUserInfoFailed(int id) override {
+            if (s_onUserInfoFailed) s_onUserInfoFailed(id);
+        }
+    };
+    GlobalUserInfoDelegate g_userInfoDelegate;
+}
+
 class PCPRow : public cocos2d::CCNode {
 public:
-    static PCPRow* create(int rank, std::string const& name, double score, bool isYou, float width) {
+    static PCPRow* create(int rank, std::string name, double score, bool isYou, float width, GJUserScore* profile = nullptr) {
         auto ret = new PCPRow();
-        if (ret->init(rank, name, score, isYou, width)) {
+        if (ret->init(rank, std::move(name), score, isYou, width, profile)) {
             ret->autorelease();
             return ret;
         }
@@ -24,40 +47,80 @@ public:
         return nullptr;
     }
 protected:
-    bool init(int rank, std::string const& name, double score, bool isYou, float width) {
+    bool init(int rank, std::string name, double score, bool isYou, float width, GJUserScore* profile) {
         if (!CCNode::init()) return false;
 
         this->setContentSize({ width, 64.0f });
 
-        auto rankLabel = CCLabelBMFont::create(fmt::format("#{}", rank).c_str(), "bigFont.fnt");
+        auto rankLabel = CCLabelBMFont::create(fmt::format("{}", rank).c_str(), "bigFont.fnt");
         rankLabel->setAnchorPoint({ 0.0f, 0.5f });
-        rankLabel->setPosition({ 12.0f, 32.0f });
-        rankLabel->setScale(0.55f);
-        rankLabel->setColor({ 255, 255, 255 });
+        rankLabel->setPosition({ 12.0f, 47.0f });
+        rankLabel->setScale(0.5f);
         if (rank <= 3) rankLabel->setColor({ 255, 220, 0 });
         addChild(rankLabel);
 
+        if (profile) {
+            makeIcon(profile);
+            name = std::string(profile->m_userName);
+        }
+        else {
+            auto placeholder = CCLabelBMFont::create("...", "chatFont.fnt");
+            placeholder->setPosition({ 44.0f, 21.0f });
+            placeholder->setScale(0.6f);
+            placeholder->setColor({ 120, 120, 120 });
+            addChild(placeholder);
+        }
+
         auto nameLabel = CCLabelBMFont::create(name.c_str(), "bigFont.fnt");
         nameLabel->setAnchorPoint({ 0.0f, 0.5f });
-        nameLabel->setPosition({ width * 0.22f, 32.0f });
+        nameLabel->setPosition({ 82.0f, 45.0f });
         nameLabel->setScale(0.5f);
-        nameLabel->limitLabelWidth(width - 220.0f, 0.5f, 0.0f);
+        nameLabel->limitLabelWidth(std::max(50.0f, width - 170.0f), 0.5f, 0.0f);
         if (isYou) {
             nameLabel->setColor({ 255, 255, 0 });
-            nameLabel->setString(fmt::format("{}  (you)", name).c_str());
-            nameLabel->limitLabelWidth(width - 220.0f, 0.5f, 0.0f);
+            nameLabel->setString(fmt::format("{} (You)", name).c_str());
+            nameLabel->limitLabelWidth(std::max(50.0f, width - 170.0f), 0.5f, 0.0f);
         }
         addChild(nameLabel);
 
         auto scoreLabel = CCLabelBMFont::create(formatScore(score).c_str(), "goldFont.fnt");
         scoreLabel->setAnchorPoint({ 1.0f, 0.5f });
-        scoreLabel->setPosition({ width - 12.0f, 32.0f });
+        scoreLabel->setPosition({ width - 12.0f, 47.0f });
         scoreLabel->setScale(0.55f);
         addChild(scoreLabel);
+
+        if (profile) {
+            auto statsLabel = CCLabelBMFont::create(
+                fmt::format("{} stars   {} demons", profile->m_stars, profile->m_demons).c_str(), "chatFont.fnt"
+            );
+            statsLabel->setAnchorPoint({ 0.0f, 0.5f });
+            statsLabel->setPosition({ 82.0f, 18.0f });
+            statsLabel->setScale(0.42f);
+            statsLabel->setColor({ 170, 170, 170 });
+            addChild(statsLabel);
+        }
 
         return true;
     }
 private:
+    void makeIcon(GJUserScore* profile) {
+        auto gm = GameManager::get();
+        auto player = SimplePlayer::create(profile->m_playerCube);
+        player->setScale(0.7f);
+        player->setFlipX(true);
+        player->setPosition({ 44.0f, 21.0f });
+        player->setColors(gm->colorForIdx(profile->m_color1), gm->colorForIdx(profile->m_color2));
+        if (profile->m_glowEnabled && profile->m_color3 > 0) {
+            auto glow = gm->colorForIdx(profile->m_color3);
+            player->setGlowOutline(glow);
+            player->enableCustomGlowColor(glow);
+        }
+        else {
+            player->disableGlowOutline();
+        }
+        addChild(player);
+    }
+
     static std::string formatScore(double score) {
         int whole = static_cast<int>(std::floor(score));
         int frac = static_cast<int>(std::lround((score - whole) * 10.0));
@@ -93,12 +156,19 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         GJListLayer* m_pcList = nullptr;
         LoadingCircle* m_loadingCircle = nullptr;
         cocos2d::CCLabelBMFont* m_yourRankLabel = nullptr;
+        cocos2d::CCLabelBMFont* m_pageLabel = nullptr;
+        cocos2d::CCMenu* m_pageMenu = nullptr;
+        CCMenuItemSpriteExtra* m_prevButton = nullptr;
+        CCMenuItemSpriteExtra* m_nextButton = nullptr;
         geode::async::TaskHolder<web::WebResponse> m_listener;
         geode::async::TaskHolder<web::WebResponse> m_rankListener;
+        std::unordered_map<int, Ref<GJUserScore>> m_iconCache;
+        std::unordered_set<int> m_failedIcons;
         LeaderboardType m_lastType = LeaderboardType::Default;
         bool m_pcEnabled = false;
         int m_ownRankValue = 0;
         bool m_ownRankChecked = false;
+        int m_page = 0;
     };
 
     bool init(LeaderboardType type, LeaderboardStat stat) {
@@ -133,6 +203,13 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         LeaderboardsLayer::selectLeaderboard(type, stat);
     }
 
+    void keyBackClicked() {
+        if (m_fields->m_pcEnabled) {
+            disarmPointercrate();
+        }
+        LeaderboardsLayer::keyBackClicked();
+    }
+
     void onPointercrate(CCObject* sender) {
         if (m_fields->m_pcEnabled) {
             disarmPointercrate();
@@ -141,6 +218,7 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         else {
             m_fields->m_pcEnabled = true;
             m_fields->m_lastType = m_type;
+            m_fields->m_page = 0;
             m_fields->m_ownRankValue = 0;
             m_fields->m_ownRankChecked = false;
             enablePointercrate();
@@ -155,9 +233,12 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
             m_fields->m_pcList = nullptr;
         }
         if (m_fields->m_loadingCircle) m_fields->m_loadingCircle->setVisible(false);
-        if (m_fields->m_yourRankLabel) {
-            m_fields->m_yourRankLabel->setVisible(false);
-        }
+        if (m_fields->m_yourRankLabel) m_fields->m_yourRankLabel->setVisible(false);
+        if (m_fields->m_pageMenu) m_fields->m_pageMenu->setVisible(false);
+        s_onUserInfoFinished = nullptr;
+        s_onUserInfoFailed = nullptr;
+        m_fields->m_iconCache.clear();
+        m_fields->m_failedIcons.clear();
         m_list->setVisible(true);
     }
 
@@ -181,14 +262,52 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         if (!m_fields->m_yourRankLabel) {
             m_fields->m_yourRankLabel = CCLabelBMFont::create("", "goldFont.fnt");
             m_fields->m_yourRankLabel->setScale(0.6f);
-            m_fields->m_yourRankLabel->setPosition({
-                pos.x,
-                pos.y - size.height / 2.0f - 15.0f
-            });
+            m_fields->m_yourRankLabel->setPosition({ pos.x + size.width / 2.0f, pos.y + size.height / 2.0f + 15.0f });
             m_fields->m_yourRankLabel->setID("your-rank-label"_spr);
             addChild(m_fields->m_yourRankLabel);
         }
         m_fields->m_yourRankLabel->setVisible(false);
+
+        if (!m_fields->m_pageMenu) {
+            m_fields->m_pageMenu = CCMenu::create();
+            m_fields->m_pageMenu->setID("pc-page-menu"_spr);
+
+            auto prevSpr = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+            auto prevBtn = CCMenuItemSpriteExtra::create(prevSpr, this, menu_selector(PCPLeaderboards::onPrevPage));
+            prevBtn->setID("pc-prev-page"_spr);
+            prevBtn->setPosition({ -55.0f, 0.0f });
+            m_fields->m_pageMenu->addChild(prevBtn);
+
+            auto nextSpr = CCSprite::createWithSpriteFrameName("GJ_arrow_03_001.png");
+            nextSpr->setFlipX(true);
+            auto nextBtn = CCMenuItemSpriteExtra::create(nextSpr, this, menu_selector(PCPLeaderboards::onNextPage));
+            nextBtn->setID("pc-next-page"_spr);
+            nextBtn->setPosition({ 55.0f, 0.0f });
+            m_fields->m_pageMenu->addChild(nextBtn);
+
+            m_fields->m_pageLabel = CCLabelBMFont::create("", "bigFont.fnt");
+            m_fields->m_pageLabel->setScale(0.5f);
+            m_fields->m_pageMenu->addChild(m_fields->m_pageLabel);
+
+            m_fields->m_prevButton = prevBtn;
+            m_fields->m_nextButton = nextBtn;
+        }
+        m_fields->m_pageMenu->setPosition({ pos.x + size.width / 2.0f, pos.y - size.height / 2.0f - 15.0f });
+        m_fields->m_pageMenu->setVisible(true);
+        if (m_fields->m_pageLabel) m_fields->m_pageLabel->setString("");
+
+        s_onUserInfoFinished = [this](GJUserScore* score) {
+            if (!m_fields->m_pcEnabled) return;
+            m_fields->m_iconCache[score->m_accountID] = Ref<GJUserScore>(score);
+            m_fields->m_failedIcons.erase(score->m_accountID);
+            if (m_fields->m_pcList) buildRankingList();
+        };
+        s_onUserInfoFailed = [this](int id) {
+            if (!m_fields->m_pcEnabled) return;
+            m_fields->m_failedIcons.insert(id);
+            if (m_fields->m_pcList) buildRankingList();
+        };
+        GameLevelManager::get()->m_userInfoDelegate = &g_userInfoDelegate;
 
         IntegratedPointercrate::loadPlayers(m_fields->m_listener, [this] {
             if (!m_fields->m_pcEnabled) return;
@@ -214,16 +333,24 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
     }
 
     void buildRankingList() {
-        if (!m_fields->m_pcList) return;
+        if (!m_fields->m_pcEnabled || !m_fields->m_pcList) return;
         if (m_fields->m_loadingCircle) m_fields->m_loadingCircle->setVisible(false);
 
-        auto cells = CCArray::create();
+        auto const& players = IntegratedPointercrate::players;
+        auto totalPages = std::max(1, static_cast<int>((players.size() + 9) / 10));
+        m_fields->m_page = std::clamp(m_fields->m_page, 0, totalPages - 1);
+        auto beginIdx = static_cast<size_t>(m_fields->m_page) * 10;
+        auto endIdx = std::min(players.size(), beginIdx + 10);
 
+        auto cells = CCArray::create();
         auto own = toTaglessLower(std::string(GameManager::get()->m_playerName));
         auto size = m_fields->m_pcList->getContentSize();
-        for (auto& player : IntegratedPointercrate::players) {
+        for (size_t i = beginIdx; i < endIdx; ++i) {
+            auto& player = players[i];
             bool isYou = !own.empty() && toTaglessLower(player.name) == own;
-            cells->addObject(PCPRow::create(player.rank, player.name, player.score, isYou, size.width));
+            auto it = m_fields->m_iconCache.find(player.id);
+            cells->addObject(PCPRow::create(player.rank, player.name, player.score, isYou, size.width,
+                it != m_fields->m_iconCache.end() ? it->second : nullptr));
         }
 
         if (auto listView = m_fields->m_pcList->m_listView) {
@@ -235,7 +362,50 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         m_fields->m_pcList->addChild(listView, 6, 9);
         m_fields->m_pcList->m_listView = listView;
 
+        requestIconsForPage();
+        updatePageUI();
         updateYourRankLabel();
+    }
+
+    void requestIconsForPage() {
+        if (!m_fields->m_pcEnabled) return;
+        auto glm = GameLevelManager::get();
+        glm->m_userInfoDelegate = &g_userInfoDelegate;
+        auto const& players = IntegratedPointercrate::players;
+        auto beginIdx = static_cast<size_t>(m_fields->m_page) * 10;
+        auto endIdx = std::min(players.size(), beginIdx + 10);
+        for (size_t i = beginIdx; i < endIdx; ++i) {
+            int aid = players[i].id;
+            if (aid <= 0) continue;
+            if (m_fields->m_iconCache.count(aid) || m_fields->m_failedIcons.count(aid)) continue;
+            glm->getGJUserInfo(aid);
+        }
+    }
+
+    void updatePageUI() {
+        if (!m_fields->m_pcEnabled) return;
+        auto const& players = IntegratedPointercrate::players;
+        auto totalPages = std::max(1, static_cast<int>((players.size() + 9) / 10));
+        if (m_fields->m_pageLabel) {
+            m_fields->m_pageLabel->setString(fmt::format("{} / {}", m_fields->m_page + 1, totalPages).c_str());
+            m_fields->m_pageLabel->setVisible(totalPages > 1);
+        }
+        if (m_fields->m_prevButton) m_fields->m_prevButton->setVisible(m_fields->m_page > 0);
+        if (m_fields->m_nextButton) m_fields->m_nextButton->setVisible(m_fields->m_page < totalPages - 1);
+    }
+
+    void onPrevPage(CCObject* sender) {
+        if (!m_fields->m_pcEnabled || m_fields->m_page <= 0) return;
+        m_fields->m_page--;
+        buildRankingList();
+    }
+
+    void onNextPage(CCObject* sender) {
+        if (!m_fields->m_pcEnabled) return;
+        auto totalPages = std::max(1, static_cast<int>((IntegratedPointercrate::players.size() + 9) / 10));
+        if (m_fields->m_page >= totalPages - 1) return;
+        m_fields->m_page++;
+        buildRankingList();
     }
 
     void updateYourRankLabel() {
