@@ -8,6 +8,7 @@
 #include <Geode/binding/InfoAlertButton.hpp>
 #include <Geode/binding/LoadingCircle.hpp>
 #include <Geode/binding/SetIDPopup.hpp>
+#include <Geode/loader/Mod.hpp>
 #include <Geode/utils/StringBuffer.hpp>
 #include <Geode/utils/random.hpp>
 

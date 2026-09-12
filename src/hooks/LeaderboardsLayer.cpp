@@ -3,6 +3,7 @@
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/binding/GJListLayer.hpp>
 #include <Geode/binding/GameManager.hpp>
+#include <Geode/binding/FLAlertLayer.hpp>
 #include <Geode/binding/LoadingCircle.hpp>
 #include <Geode/ui/ListView.hpp>
 #include <Geode/utils/string.hpp>
@@ -229,7 +230,7 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
             listView->removeFromParent();
             listView->release();
         }
-        auto listView = geode::ui::ListView::create(cells, 64.0f, size.width, size.height - 30.0f);
+        auto listView = ListView::create(cells, 64.0f, size.width, size.height - 30.0f);
         listView->retain();
         m_fields->m_pcList->addChild(listView, 6, 9);
         m_fields->m_pcList->m_listView = listView;
