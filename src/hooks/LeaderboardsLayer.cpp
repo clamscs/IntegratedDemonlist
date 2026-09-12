@@ -16,6 +16,7 @@
 #include <cmath>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -105,13 +106,17 @@ protected:
 private:
     void makeIcon(GJUserScore* profile) {
         auto gm = GameManager::get();
-        auto player = SimplePlayer::create(profile->m_playerCube);
+        int cube = profile->m_playerCube;
+        if (cube <= 0) cube = 1;
+        int color1 = profile->m_color1; if (color1 <= 0) color1 = 1;
+        int color2 = profile->m_color2; if (color2 <= 0) color2 = 1;
+        auto player = SimplePlayer::create(cube);
         player->setScale(0.7f);
         player->setFlipX(true);
         player->setPosition({ 44.0f, 21.0f });
-        player->setColors(gm->colorForIdx(profile->m_color1), gm->colorForIdx(profile->m_color2));
+        player->setColors(gm->colorForIdx(color1), gm->colorForIdx(color2));
         if (profile->m_glowEnabled && profile->m_color3 > 0) {
-            auto glow = gm->colorForIdx(profile->m_color3);
+            auto glow = gm->colorForIdx(std::max(1, profile->m_color3));
             player->setGlowOutline(glow);
             player->enableCustomGlowColor(glow);
         }
@@ -164,6 +169,8 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         geode::async::TaskHolder<web::WebResponse> m_rankListener;
         std::unordered_map<int, Ref<GJUserScore>> m_iconCache;
         std::unordered_set<int> m_failedIcons;
+        std::vector<int> m_iconQueue;
+        bool m_iconRequestPending = false;
         LeaderboardType m_lastType = LeaderboardType::Default;
         bool m_pcEnabled = false;
         int m_ownRankValue = 0;
@@ -239,6 +246,8 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         s_onUserInfoFailed = nullptr;
         m_fields->m_iconCache.clear();
         m_fields->m_failedIcons.clear();
+        m_fields->m_iconQueue.clear();
+        m_fields->m_iconRequestPending = false;
         m_list->setVisible(true);
     }
 
@@ -300,12 +309,16 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
             if (!m_fields->m_pcEnabled) return;
             m_fields->m_iconCache[score->m_accountID] = Ref<GJUserScore>(score);
             m_fields->m_failedIcons.erase(score->m_accountID);
+            m_fields->m_iconRequestPending = false;
             if (m_fields->m_pcList) buildRankingList();
+            requestNextIcon();
         };
         s_onUserInfoFailed = [this](int id) {
             if (!m_fields->m_pcEnabled) return;
             m_fields->m_failedIcons.insert(id);
+            m_fields->m_iconRequestPending = false;
             if (m_fields->m_pcList) buildRankingList();
+            requestNextIcon();
         };
         GameLevelManager::get()->m_userInfoDelegate = &g_userInfoDelegate;
 
@@ -369,17 +382,32 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
 
     void requestIconsForPage() {
         if (!m_fields->m_pcEnabled) return;
-        auto glm = GameLevelManager::get();
-        glm->m_userInfoDelegate = &g_userInfoDelegate;
         auto const& players = IntegratedPointercrate::players;
         auto beginIdx = static_cast<size_t>(m_fields->m_page) * 10;
         auto endIdx = std::min(players.size(), beginIdx + 10);
+        m_fields->m_iconQueue.clear();
         for (size_t i = beginIdx; i < endIdx; ++i) {
             int aid = players[i].id;
             if (aid <= 0) continue;
             if (m_fields->m_iconCache.count(aid) || m_fields->m_failedIcons.count(aid)) continue;
-            glm->getGJUserInfo(aid);
+            m_fields->m_iconQueue.push_back(aid);
         }
+        requestNextIcon();
+    }
+
+    void requestNextIcon() {
+        if (!m_fields->m_pcEnabled) return;
+        if (m_fields->m_iconRequestPending || m_fields->m_iconQueue.empty()) return;
+        auto glm = GameLevelManager::get();
+        glm->m_userInfoDelegate = &g_userInfoDelegate;
+        auto aid = m_fields->m_iconQueue.front();
+        m_fields->m_iconQueue.erase(m_fields->m_iconQueue.begin());
+        if (m_fields->m_iconCache.count(aid) || m_fields->m_failedIcons.count(aid)) {
+            requestNextIcon();
+            return;
+        }
+        m_fields->m_iconRequestPending = true;
+        glm->getGJUserInfo(aid);
     }
 
     void updatePageUI() {
