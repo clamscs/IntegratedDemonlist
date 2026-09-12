@@ -157,7 +157,6 @@ static std::string toTaglessLower(std::string const& name) {
 
 class $modify(PCPLeaderboards, LeaderboardsLayer) {
     struct Fields {
-        CCMenuItemToggler* m_pcToggle = nullptr;
         GJListLayer* m_pcList = nullptr;
         LoadingCircle* m_loadingCircle = nullptr;
         cocos2d::CCLabelBMFont* m_yourRankLabel = nullptr;
@@ -180,26 +179,6 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
 
     bool init(LeaderboardType type, LeaderboardStat stat) {
         if (!LeaderboardsLayer::init(type, stat)) return false;
-
-        CCNode* menu = getChildByID("right-side-menu");
-        if (!menu && m_modeButtons && m_modeButtons->count()) {
-            if (auto btn = m_modeButtons->objectAtIndex(0)) {
-                menu = static_cast<CCNode*>(btn)->getParent();
-            }
-        }
-
-        if (menu) {
-            auto onSprite = ButtonSprite::create("Pointercrate", "goldFont.fnt", "GJ_button_01.png", 1.0f);
-            onSprite->setScale(0.55f);
-            auto offSprite = ButtonSprite::create("Pointercrate", "bigFont.fnt", "GJ_button_02.png", 1.0f);
-            offSprite->setScale(0.55f);
-            m_fields->m_pcToggle = CCMenuItemToggler::create(offSprite, onSprite, this, menu_selector(PCPLeaderboards::onPointercrate));
-            m_fields->m_pcToggle->setID("pointercrate-toggle"_spr);
-            m_fields->m_pcToggle->toggle(false);
-            menu->addChild(m_fields->m_pcToggle);
-            menu->updateLayout();
-        }
-
         return true;
     }
 
@@ -217,24 +196,22 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         LeaderboardsLayer::keyBackClicked();
     }
 
-    void onPointercrate(CCObject* sender) {
+    void onGlobal(cocos2d::CCObject* sender) {
         if (m_fields->m_pcEnabled) {
             disarmPointercrate();
-            selectLeaderboard(m_fields->m_lastType, m_stat);
+            LeaderboardsLayer::selectLeaderboard(m_fields->m_lastType, m_stat);
+            return;
         }
-        else {
-            m_fields->m_pcEnabled = true;
-            m_fields->m_lastType = m_type;
-            m_fields->m_page = 0;
-            m_fields->m_ownRankValue = 0;
-            m_fields->m_ownRankChecked = false;
-            enablePointercrate();
-        }
+        m_fields->m_pcEnabled = true;
+        m_fields->m_lastType = m_type;
+        m_fields->m_page = 0;
+        m_fields->m_ownRankValue = 0;
+        m_fields->m_ownRankChecked = false;
+        enablePointercrate();
     }
 
     void disarmPointercrate() {
         m_fields->m_pcEnabled = false;
-        if (m_fields->m_pcToggle) m_fields->m_pcToggle->toggle(false);
         if (m_fields->m_pcList) {
             m_fields->m_pcList->removeFromParent();
             m_fields->m_pcList = nullptr;
@@ -305,7 +282,7 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         m_fields->m_pageMenu->setVisible(true);
         if (m_fields->m_pageLabel) m_fields->m_pageLabel->setString("");
 
-        s_onUserInfoFinished = [this](GJUserScore* score) {
+        s_onUserInfoFinished = [this, self = Ref<PCPLeaderboards>(this)](GJUserScore* score) {
             if (!m_fields->m_pcEnabled) return;
             m_fields->m_iconCache[score->m_accountID] = Ref<GJUserScore>(score);
             m_fields->m_failedIcons.erase(score->m_accountID);
@@ -313,7 +290,7 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
             if (m_fields->m_pcList) buildRankingList();
             requestNextIcon();
         };
-        s_onUserInfoFailed = [this](int id) {
+        s_onUserInfoFailed = [this, self = Ref<PCPLeaderboards>(this)](int id) {
             if (!m_fields->m_pcEnabled) return;
             m_fields->m_failedIcons.insert(id);
             m_fields->m_iconRequestPending = false;
@@ -322,20 +299,20 @@ class $modify(PCPLeaderboards, LeaderboardsLayer) {
         };
         GameLevelManager::get()->m_userInfoDelegate = &g_userInfoDelegate;
 
-        IntegratedPointercrate::loadPlayers(m_fields->m_listener, [this] {
+        IntegratedPointercrate::loadPlayers(m_fields->m_listener, [this, self = Ref<PCPLeaderboards>(this)] {
             if (!m_fields->m_pcEnabled) return;
             buildRankingList();
-        }, [this](int code) {
+        }, [this, self = Ref<PCPLeaderboards>(this)](int code) {
             onPointercrateLoadFailed(code);
         });
 
         auto ownName = GameManager::get()->m_playerName;
         if (!ownName.empty()) {
-            IntegratedPointercrate::loadPlayerRankByName(m_fields->m_rankListener, ownName, [this](PCRankedPlayer player) {
+            IntegratedPointercrate::loadPlayerRankByName(m_fields->m_rankListener, ownName, [this, self = Ref<PCPLeaderboards>(this)](PCRankedPlayer player) {
                 m_fields->m_ownRankValue = player.rank;
                 m_fields->m_ownRankChecked = true;
                 updateYourRankLabel();
-            }, [this](int) {
+            }, [this, self = Ref<PCPLeaderboards>(this)](int) {
                 m_fields->m_ownRankChecked = true;
                 updateYourRankLabel();
             });

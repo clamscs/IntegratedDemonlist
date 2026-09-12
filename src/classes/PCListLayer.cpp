@@ -10,6 +10,7 @@
 #include <Geode/binding/SetIDPopup.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/utils/StringBuffer.hpp>
+#include <Geode/utils/cocos.hpp>
 #include <Geode/utils/random.hpp>
 
 using namespace geode::prelude;
@@ -150,9 +151,9 @@ bool PCListLayer::init() {
     m_infoButton->setID("info-button");
     menu->addChild(m_infoButton, 2);
 
-    m_failure = [this](int code) {
+    m_failure = [this, self = Ref<PCListLayer>(this)](int code) {
         FLAlertLayer::create(fmt::format("Load Failed ({})", code).c_str(), "Failed to load the Pointercrate list. Please try again later.", "OK")->show();
-        m_loadingCircle->setVisible(false);
+        if (m_loadingCircle) m_loadingCircle->setVisible(false);
     };
 
     auto refreshBtnSpr = CCSprite::createWithSpriteFrameName("GJ_updateBtn_001.png");
@@ -221,7 +222,7 @@ bool PCListLayer::init() {
         populateList("");
     }
     else {
-        IntegratedPointercrate::loadDemons(m_listener, [this] {
+        IntegratedPointercrate::loadDemons(m_listener, [this, self = Ref<PCListLayer>(this)] {
             populateList("");
         }, m_failure);
     }
@@ -243,7 +244,7 @@ void PCListLayer::onNextPage(CCObject* sender) {
 
 void PCListLayer::onRefresh(CCObject* sender) {
     showLoading();
-    IntegratedPointercrate::loadDemons(m_listener, [this] {
+    IntegratedPointercrate::loadDemons(m_listener, [this, self = Ref<PCListLayer>(this)] {
         populateList(m_query);
     }, m_failure);
 }
@@ -367,7 +368,7 @@ void PCListLayer::onSearch(CCObject* sender) {
     auto query = m_searchBar->getString();
     if (m_query != query) {
         showLoading();
-        IntegratedPointercrate::loadDemons(m_listener, [this, query] {
+        IntegratedPointercrate::loadDemons(m_listener, [this, query, self = Ref<PCListLayer>(this)] {
             m_page = 0;
             populateList(query);
         }, m_failure);
