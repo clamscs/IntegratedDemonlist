@@ -9,16 +9,25 @@ std::vector<IDListDemon> IntegratedDemonlist::pemonlist;
 bool IntegratedDemonlist::pointercrateLoaded = false;
 bool IntegratedDemonlist::pemonlistLoaded = false;
 
+struct PointercrateLoaderState {
+    Function<void()> success;
+    CopyableFunction<void(int)> failure;
+};
+
 void IntegratedDemonlist::loadPointercrate(TaskHolder<web::WebResponse>& listener, Function<void()> success, CopyableFunction<void(int)> failure) {
+    auto state = std::make_shared<PointercrateLoaderState>(
+        PointercrateLoaderState { std::move(success), std::move(failure) }
+    );
+
     auto loadPage = std::make_shared<std::function<void(int)>>();
-    *loadPage = [&listener, success = std::move(success), failure = std::move(failure), loadPage](int after) {
+    *loadPage = [&listener, state, loadPage](int after) {
         auto url = after > 0
             ? fmt::format("https://pointercrate.com/api/v2/demons/listed/?limit=100&after={}", after)
             : "https://pointercrate.com/api/v2/demons/listed/?limit=100";
         listener.spawn(
             web::WebRequest().get(url),
-            [success, failure, loadPage](web::WebResponse res) mutable {
-                if (!res.ok()) return failure(res.code());
+            [state, loadPage](web::WebResponse res) mutable {
+                if (!res.ok()) return state->failure(res.code());
 
                 pointercrateLoaded = true;
                 auto demons = jasmine::web::getArray(res);
@@ -51,10 +60,10 @@ void IntegratedDemonlist::loadPointercrate(TaskHolder<web::WebResponse>& listene
                     }
                 }
 
-                if (demons.size() < 100) return success();
+                if (demons.size() < 100) return state->success();
 
                 auto lastPosition = demons[demons.size() - 1].get<int>("position");
-                if (!lastPosition.isOk()) return success();
+                if (!lastPosition.isOk()) return state->success();
                 (*loadPage)(lastPosition.unwrap());
             }
         );
