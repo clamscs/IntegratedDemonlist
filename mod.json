@@ -10,12 +10,8 @@
     "id": "hiimjustin000.integrated_demonlist",
     "name": "Integrated Demonlist",
     "developer": "hiimjasmine00",
-    "description": "Simple AREDL and Pemonlist integration.",
+    "description": "Simple Pointercrate and Pemonlist integration.",
     "resources": {
-        "files": [
-            "resources/*.frag",
-            "resources/*.vert"
-        ],
         "sprites": [
             "resources/*.png"
         ]

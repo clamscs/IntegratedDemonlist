@@ -14,7 +14,7 @@ public:
 
     ~IDListLayer() override;
 protected:
-    geode::async::TaskHolder<geode::utils::web::WebResponse> m_aredlListener;
+    geode::async::TaskHolder<geode::utils::web::WebResponse> m_pointercrateListener;
     geode::async::TaskHolder<geode::utils::web::WebResponse> m_pemonlistListener;
     GJListLayer* m_list;
     cocos2d::CCLabelBMFont* m_listLabel;
@@ -36,7 +36,7 @@ protected:
     int m_page = 0;
     std::string m_query;
     std::vector<std::string> m_fullSearchResults;
-    geode::CopyableFunction<void(int)> m_aredlFailure;
+    geode::CopyableFunction<void(int)> m_pointercrateFailure;
     geode::CopyableFunction<void(int)> m_pemonlistFailure;
 
     bool init() override;

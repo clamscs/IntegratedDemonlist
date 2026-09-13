@@ -1,102 +1,65 @@
 #include "IntegratedDemonlist.hpp"
+#include <algorithm>
 #include <jasmine/web.hpp>
 
 using namespace geode::prelude;
 
-std::vector<IDListDemon> IntegratedDemonlist::aredl;
-std::vector<IDDemonPack> IntegratedDemonlist::aredlPacks;
+std::vector<IDListDemon> IntegratedDemonlist::pointercrate;
 std::vector<IDListDemon> IntegratedDemonlist::pemonlist;
-bool IntegratedDemonlist::aredlLoaded = false;
+bool IntegratedDemonlist::pointercrateLoaded = false;
 bool IntegratedDemonlist::pemonlistLoaded = false;
 
-void IntegratedDemonlist::loadAREDL(TaskHolder<web::WebResponse>& listener, Function<void()> success, CopyableFunction<void(int)> failure) {
-    listener.spawn(
-        web::WebRequest().get("https://api.aredl.net/v2/api/aredl/levels"),
-        [failure = std::move(failure), success = std::move(success)](web::WebResponse res) mutable {
-            if (!res.ok()) return failure(res.code());
+void IntegratedDemonlist::loadPointercrate(TaskHolder<web::WebResponse>& listener, Function<void()> success, CopyableFunction<void(int)> failure) {
+    auto loadPage = std::make_shared<std::function<void(int)>>();
+    *loadPage = [&listener, success = std::move(success), failure = std::move(failure), loadPage](int after) {
+        auto url = after > 0
+            ? fmt::format("https://pointercrate.com/api/v2/demons/listed/?limit=100&after={}", after)
+            : "https://pointercrate.com/api/v2/demons/listed/?limit=100";
+        listener.spawn(
+            web::WebRequest().get(url),
+            [success, failure, loadPage](web::WebResponse res) mutable {
+                if (!res.ok()) return failure(res.code());
 
-            aredlLoaded = true;
-            aredl.clear();
+                pointercrateLoaded = true;
+                auto demons = jasmine::web::getArray(res);
+                for (auto& demon : demons) {
+                    auto id = demon.get<int>("level_id");
+                    if (!id.isOk()) continue;
 
-            for (auto& level : jasmine::web::getArray(res)) {
-                auto legacy = level.get<bool>("legacy");
-                if (legacy.isOk() && legacy.unwrap()) continue;
+                    auto position = demon.get<int>("position");
+                    if (!position.isOk()) continue;
 
-                auto id = level.get<int>("level_id");
-                if (!id.isOk()) continue;
-
-                auto position = level.get<int>("position");
-                if (!position.isOk()) continue;
-
-                auto name = level.get<std::string>("name");
-                if (!name.isOk()) continue;
-
-                IDListDemon demon(id.unwrap(), position.unwrap(), std::move(name).unwrap());
-
-                aredl.insert(std::ranges::upper_bound(aredl, demon, [](const IDListDemon& a, const IDListDemon& b) {
-                    return a.position < b.position;
-                }), std::move(demon));
-            }
-
-            success();
-        }
-    );
-}
-
-void IntegratedDemonlist::loadAREDLPacks(TaskHolder<web::WebResponse>& listener, Function<void()> success, CopyableFunction<void(int)> failure) {
-    listener.spawn(
-        web::WebRequest().get("https://api.aredl.net/v2/api/aredl/pack-tiers"),
-        [failure = std::move(failure), success = std::move(success)](web::WebResponse res) mutable {
-            if (!res.ok()) return failure(res.code());
-
-            aredlPacks.clear();
-
-            for (auto& tier : jasmine::web::getArray(res)) {
-                auto placement = tier.get<int>("placement");
-                if (!placement.isOk()) continue;
-
-                auto tierName = tier.get<std::string>("name");
-                if (!tierName.isOk()) continue;
-
-                auto packs = tier.get<std::vector<matjson::Value>>("packs");
-                if (!packs.isOk()) continue;
-
-                for (auto& pack : packs.unwrap()) {
-                    auto levelsRes = pack.get<std::vector<matjson::Value>>("levels");
-                    if (!levelsRes.isOk()) continue;
-
-                    auto name = pack.get<std::string>("name");
+                    auto name = demon.get<std::string>("name");
                     if (!name.isOk()) continue;
 
-                    auto points = pack.get<double>("points");
-                    if (!points.isOk()) continue;
-
-                    std::vector<int> levels;
-                    auto packValid = true;
-                    for (auto& level : levelsRes.unwrap()) {
-                        auto id = level.get<int>("level_id");
-                        if (id.isOk()) levels.push_back(id.unwrap());
-                        else {
-                            packValid = false;
-                            break;
+                    std::string verifier;
+                    auto verifierRes = demon.get("verifier");
+                    if (verifierRes.isOk()) {
+                        if (auto verifierName = verifierRes.unwrap().get<std::string>("name"); verifierName.isOk()) {
+                            verifier = std::move(verifierName).unwrap();
                         }
                     }
-                    if (!packValid) continue;
 
-                    IDDemonPack demonPack(
-                        std::move(name).unwrap(), tierName.unwrap(),
-                        std::move(levels), points.unwrap(), placement.unwrap()
-                    );
-
-                    aredlPacks.insert(std::ranges::upper_bound(aredlPacks, demonPack, [](const IDDemonPack& a, const IDDemonPack& b) {
-                        return a.tier == b.tier ? a.points == b.points ? a.name < b.name : a.points < b.points : a.tier < b.tier;
-                    }), std::move(demonPack));
+                    IDListDemon listDemon(id.unwrap(), position.unwrap(), std::move(name).unwrap(), verifier);
+                    if (!std::ranges::contains(pointercrate, listDemon)) {
+                        pointercrate.insert(
+                            std::ranges::upper_bound(pointercrate, listDemon, [](const IDListDemon& a, const IDListDemon& b) {
+                                return a.position < b.position;
+                            }),
+                            std::move(listDemon)
+                        );
+                    }
                 }
-            }
 
-            success();
-        }
-    );
+                if (demons.size() < 100) return success();
+
+                auto lastPosition = demons[demons.size() - 1].get<int>("position");
+                if (!lastPosition.isOk()) return success();
+                (*loadPage)(lastPosition.unwrap());
+            }
+        );
+    };
+    (*loadPage)(0);
 }
 
 void IntegratedDemonlist::loadPemonlist(TaskHolder<web::WebResponse>& listener, Function<void()> success, CopyableFunction<void(int)> failure) {
