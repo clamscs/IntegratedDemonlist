@@ -1,5 +1,4 @@
-#include <Geode/utils/Function.hpp>
-#include <Geode/utils/TaskHolder.hpp>
+#include <Geode/utils/function.hpp>
 #include <Geode/utils/web.hpp>
 
 struct IDListDemon {
